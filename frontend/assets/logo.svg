@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <circle cx="24" cy="24" r="22" fill="#F9F9F7" stroke="#6B8E7B" stroke-width="1.5"/>
+  <path d="M14 18c0-2 1.5-4 4-4s4.5 2 5 4c.5-2 2.5-4 5-4s4 2 4 4c0 6-9 12-9 12s-9-6-9-12z" fill="#6B8E7B" opacity="0.8"/>
+  <text x="24" y="38" text-anchor="middle" font-family="serif" font-size="8" font-weight="bold" fill="#2C2C2C">追番</text>
+</svg>

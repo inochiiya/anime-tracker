@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>更新日志 - 追番收藏</title>
+    <link rel="stylesheet" href="/css/common.css">
+    <link rel="stylesheet" href="/css/animations.css">
+    <link rel="stylesheet" href="/css/changelog.css">
+    <link rel="icon" href="/assets/logo.svg">
+</head>
+<body>
+    <header class="navbar">
+        <a href="/" class="logo">
+            <img src="/assets/logo.svg" alt="追番收藏">
+            <span>追番收藏</span>
+        </a>
+        <nav>
+            <a href="/">首页</a>
+            <a href="/list">番剧列表</a>
+            <a href="/admin">管理</a>
+            <a href="/changelog">更新日志</a>
+        </nav>
+    </header>
+
+    <main class="page-container">
+        <div class="section">
+            <h1 class="page-title">更新日志</h1>
+            <div id="changelog-content">
+                <div class="loading-spinner"></div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <p>用 <span>heart</span> 追番 | 追番收藏 &copy; 2026</p>
+    </footer>
+
+    <div id="toast-container"></div>
+
+    <script src="/js/api.js"></script>
+    <script src="/js/common.js"></script>
+    <script src="/js/changelog.js"></script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*.pyo
+*$py.class
+.venv/
+venv/
+.env
+
+# === 数据文件（数据库、备份、缓存、上传内容）===
+backend/*.db
+backend/backups/
+backend/cache/
+backend/uploads/
+
+# === 敏感文件（启动时自动生成的管理令牌）===
+backend/admin_token.txt
+
+# === 本地开发工具配置 ===
+.claude/
+
+# === 个人学习截图（非项目代码）===
+开发学习/
+
+# === 系统 / 编辑器 ===
+Thumbs.db
+.DS_Store

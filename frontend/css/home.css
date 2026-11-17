@@ -1,0 +1,59 @@
+.greeting-section {
+    padding-top: 2.5rem;
+    padding-bottom: 1rem;
+}
+
+.greeting h1 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.4rem;
+}
+
+.greeting-stats {
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+.greeting-stats .highlight {
+    color: var(--accent-primary);
+    font-weight: 600;
+}
+
+/* Watching Scroll */
+.watching-scroll {
+    display: flex;
+    gap: 1rem;
+    overflow-x: auto;
+    padding-bottom: 0.8rem;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+}
+
+.watching-scroll::-webkit-scrollbar {
+    height: 4px;
+}
+
+.watching-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.watching-scroll::-webkit-scrollbar-thumb {
+    background: var(--border-light);
+    border-radius: 2px;
+}
+
+.watching-scroll .anime-card {
+    flex: 0 0 180px;
+    scroll-snap-align: start;
+}
+
+@media (max-width: 768px) {
+    .greeting h1 {
+        font-size: 1.4rem;
+    }
+    .watching-scroll .anime-card {
+        flex: 0 0 150px;
+    }
+}
