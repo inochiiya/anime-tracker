@@ -37,6 +37,8 @@ function initAdmin() {
         loadAdminList();
     });
 
+    document.getElementById('form-episodes').addEventListener('input', syncWatchedEpisodesLimit);
+
     document.getElementById('form-modal').addEventListener('click', (e) => {
         if (e.target === e.currentTarget) closeFormModal();
     });
@@ -48,6 +50,17 @@ function initAdmin() {
     document.getElementById('changelog-modal').addEventListener('click', (e) => {
         if (e.target === e.currentTarget) closeChangelogModal();
     });
+}
+
+function syncWatchedEpisodesLimit() {
+    const episodesInput = document.getElementById('form-episodes');
+    const watchedInput = document.getElementById('form-watched');
+    const total = parseInt(episodesInput.value, 10);
+    if (Number.isInteger(total) && total >= 0) {
+        watchedInput.max = String(total);
+    } else {
+        watchedInput.removeAttribute('max');
+    }
 }
 
 // ─── Admin Tab Switching ─────────────────────────────────────
@@ -132,6 +145,7 @@ function openCreateModal() {
     document.getElementById('anime-form').reset();
     document.getElementById('form-rating').value = '0';
     document.getElementById('form-watched').value = '0';
+    syncWatchedEpisodesLimit();
     document.getElementById('cover-preview').innerHTML = '';
     document.getElementById('modal-tabs').style.display = 'none';
     switchModalTab('info');
@@ -151,6 +165,7 @@ async function openEditModal(id) {
         document.getElementById('form-rating').value = anime.rating || 0;
         document.getElementById('form-episodes').value = anime.episodes || '';
         document.getElementById('form-watched').value = anime.watched_episodes || 0;
+        syncWatchedEpisodesLimit();
         document.getElementById('form-year').value = anime.year || '';
         document.getElementById('form-season').value = anime.season || '';
         document.getElementById('form-start-date').value = anime.start_date || '';
@@ -210,14 +225,24 @@ async function handleSubmit(e) {
         return;
     }
     const id = document.getElementById('form-id').value;
+    const episodesValue = document.getElementById('form-episodes').value;
+    const watchedValue = document.getElementById('form-watched').value;
+    const episodes = episodesValue === '' ? null : parseInt(episodesValue, 10);
+    const watchedEpisodes = watchedValue === '' ? 0 : parseInt(watchedValue, 10);
+    if (episodes !== null && watchedEpisodes > episodes) {
+        showToast('已看集数不能超过总集数', 'error');
+        switchModalTab('info');
+        document.getElementById('form-watched').focus();
+        return;
+    }
     const data = {
         title: titleVal,
         title_jp: document.getElementById('form-title-jp').value || null,
         cover_url: document.getElementById('form-cover').value || null,
         status: document.getElementById('form-status').value,
         rating: parseFloat(document.getElementById('form-rating').value) || 0,
-        episodes: parseInt(document.getElementById('form-episodes').value) || null,
-        watched_episodes: parseInt(document.getElementById('form-watched').value) || 0,
+        episodes: episodes,
+        watched_episodes: watchedEpisodes,
         year: parseInt(document.getElementById('form-year').value) || null,
         season: document.getElementById('form-season').value || null,
         start_date: document.getElementById('form-start-date').value || null,

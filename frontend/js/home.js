@@ -1,5 +1,7 @@
 function onProgressUpdate() {
     loadStats();
+    loadWatching();
+    loadRecent();
 }
 
 async function loadStats() {
@@ -22,6 +24,7 @@ async function loadStats() {
 
 async function loadWatching() {
     const container = document.getElementById('watching-scroll');
+    container.innerHTML = '';
     try {
         const data = await apiGet('/anime', { status: 'watching', sort_by: 'updated_at', order: 'desc', page_size: 20 });
         if (data.items.length === 0) {
@@ -38,6 +41,7 @@ async function loadWatching() {
 
 async function loadRecent() {
     const grid = document.getElementById('recent-grid');
+    grid.innerHTML = '';
     try {
         const items = await apiGet('/anime/recent/list', { limit: 10 });
         if (items.length === 0) {

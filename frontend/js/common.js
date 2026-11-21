@@ -142,7 +142,13 @@ function createAnimeCard(anime, showProgressBtn = false) {
 // ─── Status Dropdown (shared) ───────────────────────────────
 
 function closeAllStatusDropdowns() {
-    document.querySelectorAll('.status-dropdown').forEach(el => el.remove());
+    document.querySelectorAll('.status-dropdown').forEach(el => {
+        if (typeof el._cleanup === 'function') {
+            el._cleanup();
+        } else {
+            el.remove();
+        }
+    });
 }
 
 function showStatusDropdown(rect, anime, card, showProgressBtn) {
@@ -179,8 +185,21 @@ function showStatusDropdown(rect, anime, card, showProgressBtn) {
     });
 
     document.body.appendChild(dropdown);
-    const closeHandler = () => { closeAllStatusDropdowns(); document.removeEventListener('click', closeHandler); };
+    let closed = false;
+    const closeHandler = () => {
+        if (closed) return;
+        closed = true;
+        dropdown.remove();
+        document.removeEventListener('click', closeHandler);
+        window.removeEventListener('scroll', closeHandler, true);
+        window.removeEventListener('wheel', closeHandler, true);
+        window.removeEventListener('resize', closeHandler);
+    };
+    dropdown._cleanup = closeHandler;
     setTimeout(() => document.addEventListener('click', closeHandler), 0);
+    window.addEventListener('scroll', closeHandler, true);
+    window.addEventListener('wheel', closeHandler, true);
+    window.addEventListener('resize', closeHandler);
 }
 
 function showDetailStatusDropdown(e, animeId) {

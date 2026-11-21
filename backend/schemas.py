@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional, List
 from datetime import datetime
 
@@ -10,7 +10,7 @@ class AnimeBase(BaseModel):
     title_jp: Optional[str] = None
     cover_url: Optional[str] = None
     synopsis: Optional[str] = None
-    episodes: Optional[int] = None
+    episodes: Optional[int] = Field(default=None, ge=0)
     status: str = Field(default="planned", pattern="^(watching|completed|planned|dropped)$")
     genre: Optional[str] = None
     year: Optional[int] = None
@@ -21,11 +21,21 @@ class AnimeBase(BaseModel):
     link_url: Optional[str] = None
     notes: Optional[str] = None
     is_featured: Optional[int] = 0
-    watched_episodes: Optional[int] = 0
+    watched_episodes: Optional[int] = Field(default=0, ge=0)
     start_date: Optional[str] = None
     finish_date: Optional[str] = None
     is_favorite: Optional[int] = 0
     personal_tags: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_episode_progress(self):
+        if (
+            self.episodes is not None
+            and self.watched_episodes is not None
+            and self.watched_episodes > self.episodes
+        ):
+            raise ValueError("已看集数不能超过总集数")
+        return self
 
 
 class AnimeCreate(AnimeBase):

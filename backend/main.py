@@ -164,9 +164,19 @@ def create_anime(anime: AnimeCreate, db: Session = Depends(get_db)):
 
 @app.put("/api/anime/{anime_id}", response_model=AnimeResponse, dependencies=[Depends(require_admin)])
 def update_anime(anime_id: int, anime: AnimeUpdate, db: Session = Depends(get_db)):
-    result = crud.update_anime(db, anime_id, anime)
-    if not result:
+    current = crud.get_anime(db, anime_id)
+    if not current:
         raise HTTPException(status_code=404, detail="番剧不存在")
+    changes = anime.model_dump(exclude_unset=True)
+    episodes = changes.get("episodes", current.episodes)
+    watched_episodes = changes.get("watched_episodes", current.watched_episodes)
+    if (
+        episodes is not None
+        and watched_episodes is not None
+        and watched_episodes > episodes
+    ):
+        raise HTTPException(status_code=422, detail="已看集数不能超过总集数")
+    result = crud.update_anime(db, anime_id, anime)
     return result
 
 
@@ -499,6 +509,32 @@ def migrate_db(db: Session):
     db.commit()
 
 
+def migrate_changelogs(db: Session):
+    """Normalize early versions and add this release once."""
+    version_map = {
+        "v1.0.0": "v0.1.0",
+        "v1.0.1": "v0.1.1",
+        "v1.0.2": "v0.1.2",
+    }
+    for old_version, new_version in version_map.items():
+        db.query(Changelog).filter(Changelog.version == old_version).update(
+            {Changelog.version: new_version}, synchronize_session=False
+        )
+
+    if not db.query(Changelog).filter(Changelog.version == "v0.1.3").first():
+        db.add(Changelog(
+            title="交互与进度同步修复",
+            version="v0.1.3",
+            content=(
+                "修复首页状态切换菜单滚动后仍固定在原位的问题。\n"
+                "修复管理页面允许已看集数超过总集数的问题。\n"
+                "优化首页进度 +1 后正在追、最近更新和统计数据的同步刷新。\n"
+                "统一早期更新日志版本号，从 v0.1.0 开始递增。"
+            ),
+        ))
+    db.commit()
+
+
 def migrate_from_old_db(db: Session):
     """Copy data from anime_old.db (project root) into the current database."""
     import sqlite3
@@ -569,6 +605,7 @@ def startup():
     init_db()
     db = SessionLocal()
     migrate_db(db)
+    migrate_changelogs(db)
     if db.query(Anime).count() == 0:
         if not migrate_from_old_db(db):
             print("[SEED] No old database found, starting with empty database")
