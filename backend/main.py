@@ -1,16 +1,22 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Header
+import asyncio
+import ipaddress
+import json
+import os
+import shutil
+import socket
+import time
+import uuid
+from hashlib import md5
+from pathlib import Path
+from typing import Optional
+from urllib.parse import urljoin, urlparse
+
+import httpx
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Header, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func as sql_func, case, text, inspect
-from typing import Optional
-import json
-import os
-import uuid
-import time
-import shutil
-import httpx
-from hashlib import md5
 
 from database import get_db, init_db, SessionLocal
 from models import Anime, Character, EpisodeNote, EpisodeImage, Changelog
@@ -24,20 +30,66 @@ from schemas import (
 from config import ADMIN_TOKEN
 import crud
 
-UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+BACKEND_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = BACKEND_DIR.parent
+FRONTEND_DIR = PROJECT_DIR / "frontend"
+UPLOAD_DIR = BACKEND_DIR / "uploads"
+CACHE_DIR = BACKEND_DIR / "cache"
+UPLOAD_DIR.mkdir(exist_ok=True)
+CACHE_DIR.mkdir(exist_ok=True)
 
 app = FastAPI(title="追番收藏 API")
 
 # 说明：本项目前后端同源（均由 FastAPI 提供服务），无需 CORS。
 # 移除 allow_origins=["*"] 可防止其他网站跨域调用本 API。
 
-app.mount("/css", StaticFiles(directory="../frontend/css"), name="css")
-app.mount("/js", StaticFiles(directory="../frontend/js"), name="js")
-app.mount("/assets", StaticFiles(directory="../frontend/assets"), name="assets")
+app.mount("/css", StaticFiles(directory=FRONTEND_DIR / "css"), name="css")
+app.mount("/js", StaticFiles(directory=FRONTEND_DIR / "js"), name="js")
+app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="assets")
 
-# Reusable httpx client (connection pool)
-http_client = httpx.AsyncClient(timeout=10, follow_redirects=True)
+# Created lazily inside the running event loop, then reused as a connection pool.
+http_client: Optional[httpx.AsyncClient] = None
+
+MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+@app.middleware("http")
+async def security_middleware(request: Request, call_next):
+    if request.method in MUTATING_METHODS:
+        fetch_site = request.headers.get("sec-fetch-site", "").lower()
+        if fetch_site == "cross-site":
+            return JSONResponse(status_code=403, content={"detail": "拒绝跨站写入请求"})
+
+        origin = request.headers.get("origin")
+        if origin:
+            parsed_origin = urlparse(origin)
+            try:
+                origin_port = parsed_origin.port or (443 if parsed_origin.scheme == "https" else 80)
+            except ValueError:
+                return JSONResponse(status_code=403, content={"detail": "请求来源不受信任"})
+            request_port = request.url.port or (443 if request.url.scheme == "https" else 80)
+            if (
+                parsed_origin.scheme not in {"http", "https"}
+                or parsed_origin.hostname != request.url.hostname
+                or origin_port != request_port
+            ):
+                return JSONResponse(status_code=403, content={"detail": "请求来源不受信任"})
+
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+        "connect-src 'self'; object-src 'none'; base-uri 'self'; "
+        "frame-ancestors 'self'; form-action 'self'",
+    )
+    if request.scope.get("path", "").startswith("/api/") and "cache-control" not in response.headers:
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 # ─── Admin Auth ───────────────────────────────────────────────
@@ -188,16 +240,24 @@ def delete_anime(anime_id: int, db: Session = Depends(get_db)):
     return {"message": "删除成功"}
 
 
-@app.put("/api/anime/{anime_id}/status", response_model=AnimeResponse)
+@app.put(
+    "/api/anime/{anime_id}/status",
+    response_model=AnimeResponse,
+    dependencies=[Depends(require_admin)],
+)
 def set_status(anime_id: int, data: StatusUpdate, db: Session = Depends(get_db)):
-    """公开的轻量状态切换，只允许修改 status 字段，用于首页/详情页的一键切换。"""
+    """修改追番状态，用于首页和详情页的一键切换。"""
     result = crud.set_status(db, anime_id, data.status)
     if not result:
         raise HTTPException(status_code=404, detail="番剧不存在")
     return result
 
 
-@app.put("/api/anime/{anime_id}/progress", response_model=AnimeResponse)
+@app.put(
+    "/api/anime/{anime_id}/progress",
+    response_model=AnimeResponse,
+    dependencies=[Depends(require_admin)],
+)
 def increment_progress(anime_id: int, db: Session = Depends(get_db)):
     result = crud.increment_progress(db, anime_id)
     if not result:
@@ -268,54 +328,140 @@ def yearly_summary(year: int, db: Session = Depends(get_db)):
 
 # ─── Image Proxy ──────────────────────────────────────────────
 
-CACHE_DIR = os.path.join(os.path.dirname(__file__), "cache")
-CACHE_TTL = 7 * 24 * 3600  # 7 days
-os.makedirs(CACHE_DIR, exist_ok=True)
+CACHE_TTL = 7 * 24 * 3600
+MAX_PROXY_SIZE = 8 * 1024 * 1024
+MAX_PROXY_REDIRECTS = 3
+ALLOWED_PROXY_MIME = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    global http_client
+    if http_client is None or http_client.is_closed:
+        http_client = httpx.AsyncClient(timeout=10, follow_redirects=False)
+    return http_client
 
 
 def _detect_mime(data: bytes) -> str:
     if data[:8] == b'\x89PNG\r\n\x1a\n': return "image/png"
     if data[:4] == b'RIFF' and data[8:12] == b'WEBP': return "image/webp"
-    if data[:3] == b'GIF8': return "image/gif"
+    if data[:4] == b'GIF8': return "image/gif"
     if data[:2] == b'\xff\xd8': return "image/jpeg"
-    if data[:4] == b'<svg' or b'<svg' in data[:200]: return "image/svg+xml"
-    return "image/jpeg"
+    return ""
+
+
+def _parse_remote_url(url: str):
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise HTTPException(status_code=400, detail="仅支持公开的 HTTP(S) 图片地址")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="图片地址端口无效") from exc
+    if parsed.username or parsed.password or port not in {None, 80, 443}:
+        raise HTTPException(status_code=400, detail="图片地址包含不允许的认证信息或端口")
+
+    try:
+        literal_ip = ipaddress.ip_address(parsed.hostname)
+        if not literal_ip.is_global:
+            raise HTTPException(status_code=400, detail="不允许访问本机或内网地址")
+    except ValueError:
+        literal_ip = None
+    return parsed, port, literal_ip
+
+
+async def _validate_remote_url(url: str) -> None:
+    parsed, port, literal_ip = _parse_remote_url(url)
+    if literal_ip is not None:
+        return
+
+    try:
+        addresses = await asyncio.to_thread(
+            socket.getaddrinfo,
+            parsed.hostname,
+            port or (443 if parsed.scheme == "https" else 80),
+            type=socket.SOCK_STREAM,
+        )
+    except socket.gaierror as exc:
+        raise HTTPException(status_code=400, detail="图片域名无法解析") from exc
+
+    for ip in {ipaddress.ip_address(address[4][0]) for address in addresses}:
+        if not ip.is_global:
+            raise HTTPException(status_code=400, detail="不允许访问本机或内网地址")
+
+
+async def _fetch_remote_image(url: str) -> tuple[bytes, str]:
+    current_url = url
+    for _ in range(MAX_PROXY_REDIRECTS + 1):
+        await _validate_remote_url(current_url)
+        try:
+            async with _get_http_client().stream("GET", current_url, headers={"Referer": ""}) as resp:
+                if resp.status_code in {301, 302, 303, 307, 308}:
+                    location = resp.headers.get("location")
+                    if not location:
+                        raise HTTPException(status_code=502, detail="图片重定向无效")
+                    current_url = urljoin(current_url, location)
+                    continue
+                if resp.status_code != 200:
+                    raise HTTPException(status_code=502, detail="图片获取失败")
+
+                content_length = resp.headers.get("content-length")
+                if content_length:
+                    try:
+                        if int(content_length) > MAX_PROXY_SIZE:
+                            raise HTTPException(status_code=413, detail="远程图片超过 8MB 限制")
+                    except ValueError:
+                        pass
+
+                chunks = []
+                total = 0
+                async for chunk in resp.aiter_bytes():
+                    total += len(chunk)
+                    if total > MAX_PROXY_SIZE:
+                        raise HTTPException(status_code=413, detail="远程图片超过 8MB 限制")
+                    chunks.append(chunk)
+
+                content = b"".join(chunks)
+                detected_mime = _detect_mime(content)
+                declared_mime = resp.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+                mime = detected_mime or declared_mime
+                if mime not in ALLOWED_PROXY_MIME or not detected_mime:
+                    raise HTTPException(status_code=415, detail="远程内容不是支持的图片格式")
+                return content, mime
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=502, detail="图片请求失败") from exc
+
+    raise HTTPException(status_code=502, detail="图片重定向次数过多")
 
 
 @app.get("/api/proxy/cover")
 async def proxy_cover(url: str):
     cache_key = md5(url.encode()).hexdigest()
-    cache_path = os.path.join(CACHE_DIR, cache_key + ".img")
-    meta_path = os.path.join(CACHE_DIR, cache_key + ".meta")
+    cache_path = CACHE_DIR / f"{cache_key}.img"
+    meta_path = CACHE_DIR / f"{cache_key}.meta"
 
-    if os.path.exists(cache_path):
+    if cache_path.exists():
         # TTL check: re-fetch if cache is stale
-        age = time.time() - os.path.getmtime(cache_path)
+        age = time.time() - cache_path.stat().st_mtime
         if age < CACHE_TTL:
-            mime = "image/jpeg"
-            if os.path.exists(meta_path):
-                with open(meta_path, "r") as f:
-                    mime = f.read().strip()
-            with open(cache_path, "rb") as f:
-                return Response(content=f.read(), media_type=mime,
-                              headers={"Cache-Control": "public, max-age=604800"})
+            content = cache_path.read_bytes()
+            mime = _detect_mime(content)
+            if mime in ALLOWED_PROXY_MIME:
+                return Response(
+                    content=content,
+                    media_type=mime,
+                    headers={"Cache-Control": "public, max-age=604800"},
+                )
+            cache_path.unlink(missing_ok=True)
+            meta_path.unlink(missing_ok=True)
 
-    try:
-        resp = await http_client.get(url, headers={"Referer": ""})
-        if resp.status_code != 200:
-            raise HTTPException(status_code=502, detail="图片获取失败")
-        mime = resp.headers.get("content-type", "")
-        if not mime or mime == "application/octet-stream":
-            mime = _detect_mime(resp.content)
-        mime = mime.split(";")[0].strip()
-        with open(cache_path, "wb") as f:
-            f.write(resp.content)
-        with open(meta_path, "w") as f:
-            f.write(mime)
-        return Response(content=resp.content, media_type=mime,
-                      headers={"Cache-Control": "public, max-age=604800"})
-    except httpx.RequestError:
-        raise HTTPException(status_code=502, detail="图片请求失败")
+    content, mime = await _fetch_remote_image(url)
+    cache_path.write_bytes(content)
+    meta_path.write_text(mime, encoding="utf-8")
+    return Response(
+        content=content,
+        media_type=mime,
+        headers={"Cache-Control": "public, max-age=604800"},
+    )
 
 
 # ─── Character Routes ─────────────────────────────────────────
@@ -395,6 +541,15 @@ def _is_valid_image(data: bytes, ext: str) -> bool:
     return False
 
 
+def _safe_upload_path(filename: str) -> Path:
+    if not filename or filename != Path(filename).name:
+        raise HTTPException(status_code=400, detail="文件名无效")
+    path = (UPLOAD_DIR / filename).resolve()
+    if path.parent != UPLOAD_DIR.resolve():
+        raise HTTPException(status_code=400, detail="文件名无效")
+    return path
+
+
 @app.post("/api/episodes/{note_id}/images", response_model=EpisodeImageResponse, dependencies=[Depends(require_admin)])
 async def upload_episode_image(note_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
     note = crud.get_episode_note(db, note_id)
@@ -409,9 +564,8 @@ async def upload_episode_image(note_id: int, file: UploadFile = File(...), db: S
     if not _is_valid_image(content, ext):
         raise HTTPException(status_code=400, detail="文件内容与扩展名不符")
     filename = f"{uuid.uuid4().hex}{ext}"
-    filepath = os.path.join(UPLOAD_DIR, filename)
-    with open(filepath, "wb") as f:
-        f.write(content)
+    filepath = _safe_upload_path(filename)
+    filepath.write_bytes(content)
     return crud.create_episode_image(db, note_id, filename, file.filename)
 
 
@@ -420,16 +574,16 @@ def delete_episode_image(image_id: int, db: Session = Depends(get_db)):
     result = crud.delete_episode_image(db, image_id)
     if not result:
         raise HTTPException(status_code=404, detail="图片不存在")
-    filepath = os.path.join(UPLOAD_DIR, result.filename)
-    if os.path.exists(filepath):
-        os.remove(filepath)
+    filepath = _safe_upload_path(result.filename)
+    if filepath.exists():
+        filepath.unlink()
     return {"message": "删除成功"}
 
 
 @app.get("/api/uploads/{filename}")
 def serve_upload(filename: str):
-    filepath = os.path.join(UPLOAD_DIR, filename)
-    if not os.path.exists(filepath):
+    filepath = _safe_upload_path(filename)
+    if not filepath.is_file():
         raise HTTPException(status_code=404, detail="文件不存在")
     return FileResponse(filepath)
 
@@ -467,27 +621,27 @@ def delete_changelog(log_id: int, db: Session = Depends(get_db)):
 
 @app.get("/", include_in_schema=False)
 def serve_home():
-    return FileResponse("../frontend/index.html")
+    return FileResponse(FRONTEND_DIR / "index.html")
 
 
 @app.get("/list", include_in_schema=False)
 def serve_list():
-    return FileResponse("../frontend/list.html")
+    return FileResponse(FRONTEND_DIR / "list.html")
 
 
 @app.get("/detail", include_in_schema=False)
 def serve_detail():
-    return FileResponse("../frontend/detail.html")
+    return FileResponse(FRONTEND_DIR / "detail.html")
 
 
 @app.get("/admin", include_in_schema=False)
 def serve_admin():
-    return FileResponse("../frontend/admin.html")
+    return FileResponse(FRONTEND_DIR / "admin.html")
 
 
 @app.get("/changelog", include_in_schema=False)
 def serve_changelog():
-    return FileResponse("../frontend/changelog.html")
+    return FileResponse(FRONTEND_DIR / "changelog.html")
 
 
 # ─── Startup ──────────────────────────────────────────────────
@@ -532,6 +686,19 @@ def migrate_changelogs(db: Session):
                 "统一早期更新日志版本号，从 v0.1.0 开始递增。"
             ),
         ))
+    if not db.query(Changelog).filter(Changelog.version == "v0.2.0").first():
+        db.add(Changelog(
+            title="主站接入与安全增强",
+            version="v0.2.0",
+            content=(
+                "接入 Inochi 主站，支持 /apps/anime/ 本地入口和 fan.inochi.top 域名访问。\n"
+                "服务端口调整为 18101，并限制为仅监听本机回环地址。\n"
+                "统一浅色与深色主题，增加返回主站入口并完善移动端适配。\n"
+                "为状态切换、进度更新、导入导出及管理操作统一增加令牌校验。\n"
+                "加强封面代理、上传路径、跨站写入和安全响应头防护。\n"
+                "优化启动脚本、静态资源缓存与 Nginx 子路径兼容。"
+            ),
+        ))
     db.commit()
 
 
@@ -539,8 +706,8 @@ def migrate_from_old_db(db: Session):
     """Copy data from anime_old.db (project root) into the current database."""
     import sqlite3
     from datetime import datetime
-    old_db_path = os.path.join(os.path.dirname(__file__), "..", "anime_old.db")
-    if not os.path.exists(old_db_path):
+    old_db_path = PROJECT_DIR / "anime_old.db"
+    if not old_db_path.exists():
         return False
     try:
         old_conn = sqlite3.connect(old_db_path)
@@ -582,21 +749,21 @@ def migrate_from_old_db(db: Session):
 
 def backup_database():
     """启动时自动备份数据库文件（带日期，保留最近 7 份）。"""
-    db_path = os.path.join(os.path.dirname(__file__), "anime.db")
-    if not os.path.exists(db_path):
+    db_path = BACKEND_DIR / "anime.db"
+    if not db_path.exists():
         return
-    backup_dir = os.path.join(os.path.dirname(__file__), "backups")
-    os.makedirs(backup_dir, exist_ok=True)
+    backup_dir = BACKEND_DIR / "backups"
+    backup_dir.mkdir(exist_ok=True)
     date_str = time.strftime("%Y%m%d")
-    backup_path = os.path.join(backup_dir, f"anime_{date_str}.db")
-    if not os.path.exists(backup_path):
+    backup_path = backup_dir / f"anime_{date_str}.db"
+    if not backup_path.exists():
         shutil.copy2(db_path, backup_path)
     # 只保留最近 7 份备份
     backups = sorted(
-        [f for f in os.listdir(backup_dir) if f.startswith("anime_") and f.endswith(".db")]
+        [path for path in backup_dir.iterdir() if path.name.startswith("anime_") and path.suffix == ".db"]
     )
     for old in backups[:-7]:
-        os.remove(os.path.join(backup_dir, old))
+        old.unlink()
 
 
 @app.on_event("startup")
@@ -613,10 +780,16 @@ def startup():
 
 @app.on_event("shutdown")
 async def shutdown_http():
-    await http_client.aclose()
+    if http_client is not None and not http_client.is_closed:
+        await http_client.aclose()
 
 
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(
+        "main:app",
+        host="127.0.0.1",
+        port=int(os.environ.get("ANIME_PORT", "18101")),
+        reload=False,
+    )

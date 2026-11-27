@@ -49,7 +49,7 @@ function updateURL() {
             params.set(k, v);
         }
     });
-    history.replaceState(null, '', `/list?${params.toString()}`);
+    history.replaceState(null, '', appPath(`/list?${params.toString()}`));
 }
 
 async function loadAnime() {

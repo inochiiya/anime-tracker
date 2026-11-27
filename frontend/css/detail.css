@@ -80,7 +80,7 @@
     font-weight: 700;
     line-height: 1.3;
     color: var(--text-primary);
-    font-family: 'Noto Serif SC', serif;
+    font-family: inherit;
 }
 
 .detail-title-jp {
@@ -273,7 +273,7 @@
     color: var(--text-primary);
     font-size: 0.9rem;
     line-height: 1.8;
-    font-family: 'Noto Serif SC', serif;
+    font-family: inherit;
 }
 
 /* External link */

@@ -1,35 +1,57 @@
-@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
-
 :root {
-    --bg-primary: #F9F9F7;
-    --bg-secondary: #FFFFFF;
-    --bg-card: #FFFFFF;
-    --bg-card-hover: #FAFAF8;
-    --bg-input: #F5F5F3;
+    --bg-primary: #f4f4f5;
+    --bg-secondary: #ffffff;
+    --bg-card: #ffffff;
+    --bg-card-hover: #fafafa;
+    --bg-input: #f4f4f5;
 
-    --text-primary: #2C2C2C;
-    --text-secondary: #808080;
-    --text-accent: #6B8E7B;
+    --text-primary: #18181b;
+    --text-secondary: #71717a;
+    --text-accent: #2563eb;
 
-    --accent-primary: #6B8E7B;
-    --accent-secondary: #A4C6D9;
-    --accent-warm: #D4A574;
+    --accent-primary: #3b82f6;
+    --accent-secondary: #0f766e;
+    --accent-warm: #d97706;
 
-    --status-watching: #8FBC8F;
-    --status-completed: #EEDC82;
-    --status-planned: #A4C6D9;
-    --status-dropped: #D3D3D3;
+    --status-watching: #16a34a;
+    --status-completed: #d97706;
+    --status-planned: #3b82f6;
+    --status-dropped: #71717a;
 
-    --border-light: #E8E8E4;
-    --border-input: #D5D5D0;
+    --border-light: #e4e4e7;
+    --border-input: #d4d4d8;
 
     --shadow-card: 0 2px 8px rgba(0,0,0,0.04);
     --shadow-card-hover: 0 8px 24px rgba(0,0,0,0.08);
 
     --radius-sm: 6px;
-    --radius-md: 10px;
-    --radius-lg: 16px;
+    --radius-md: 8px;
+    --radius-lg: 8px;
     --nav-height: 56px;
+    color-scheme: light;
+}
+
+[data-theme="dark"] {
+    --bg-primary: #0f0f11;
+    --bg-secondary: #18181b;
+    --bg-card: #27272a;
+    --bg-card-hover: #303034;
+    --bg-input: #27272a;
+    --text-primary: #f4f4f5;
+    --text-secondary: #a1a1aa;
+    --text-accent: #93c5fd;
+    --accent-primary: #60a5fa;
+    --accent-secondary: #5eead4;
+    --accent-warm: #fbbf24;
+    --status-watching: #4ade80;
+    --status-completed: #fbbf24;
+    --status-planned: #60a5fa;
+    --status-dropped: #a1a1aa;
+    --border-light: #3f3f46;
+    --border-input: #52525b;
+    --shadow-card: 0 2px 8px rgba(0,0,0,0.22);
+    --shadow-card-hover: 0 8px 24px rgba(0,0,0,0.32);
+    color-scheme: dark;
 }
 
 *, *::before, *::after {
@@ -43,7 +65,7 @@ html {
 }
 
 body {
-    font-family: 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
     background: var(--bg-primary);
     color: var(--text-primary);
     line-height: 1.7;
@@ -51,9 +73,7 @@ body {
     padding-top: var(--nav-height);
 }
 
-h1, h2, h3, .section-title {
-    font-family: 'Noto Serif SC', serif;
-}
+h1, h2, h3, .section-title { font-family: inherit; }
 
 a {
     color: var(--accent-primary);
@@ -93,7 +113,7 @@ img {
     font-size: 1.2rem;
     font-weight: 700;
     color: var(--text-primary);
-    font-family: 'Noto Serif SC', serif;
+    font-family: inherit;
 }
 
 .navbar .logo img {
@@ -104,6 +124,34 @@ img {
 .navbar nav {
     display: flex;
     gap: 1.5rem;
+    margin-left: auto;
+}
+
+.site-controls {
+    display: flex;
+    gap: 0.4rem;
+    margin-left: 1rem;
+}
+
+.icon-button {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font: inherit;
+    font-size: 1rem;
+    cursor: pointer;
+}
+
+.icon-button:hover {
+    color: var(--text-primary);
+    background: var(--bg-card-hover);
 }
 
 .navbar nav a {
@@ -533,6 +581,8 @@ img {
     .navbar .logo { gap: 0.3rem; font-size: 0.95rem; flex-shrink: 0; }
     .navbar .logo img { width: 28px; height: 28px; }
     .navbar nav { gap: 0.65rem; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+    .site-controls { gap: 0.25rem; margin-left: 0.25rem; }
+    .icon-button { width: 30px; height: 30px; }
     .navbar nav::-webkit-scrollbar { display: none; }
     .navbar nav a { font-size: 0.76rem; white-space: nowrap; }
     .section { padding: 1.25rem 0.85rem; }
@@ -661,4 +711,13 @@ img {
 
 .footer span {
     color: var(--accent-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
 }

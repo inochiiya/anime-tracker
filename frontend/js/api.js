@@ -1,13 +1,24 @@
-const API_BASE = '/api';
+const APP_PREFIX = window.location.pathname === '/apps/anime'
+    || window.location.pathname.startsWith('/apps/anime/')
+    ? '/apps/anime'
+    : '';
 
-let _adminToken = localStorage.getItem('admin_token') || '';
+function appPath(path = '/') {
+    const normalized = path.startsWith('/') ? path : `/${path}`;
+    return `${APP_PREFIX}${normalized}`;
+}
+
+const API_BASE = appPath('/api');
+const ADMIN_TOKEN_KEY = 'anime_tracker_admin_token';
+
+let _adminToken = localStorage.getItem(ADMIN_TOKEN_KEY) || '';
 
 function setAdminToken(token) {
     _adminToken = token || '';
     if (_adminToken) {
-        localStorage.setItem('admin_token', _adminToken);
+        localStorage.setItem(ADMIN_TOKEN_KEY, _adminToken);
     } else {
-        localStorage.removeItem('admin_token');
+        localStorage.removeItem(ADMIN_TOKEN_KEY);
     }
 }
 

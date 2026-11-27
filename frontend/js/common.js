@@ -33,8 +33,8 @@ function escapeHtml(str) {
 }
 
 function getProxiedUrl(url) {
-    if (!url) return '/assets/default-cover.svg';
-    if (url.startsWith('http')) return '/api/proxy/cover?url=' + encodeURIComponent(url);
+    if (!url) return appPath('/assets/default-cover.svg');
+    if (url.startsWith('http')) return API_BASE + '/proxy/cover?url=' + encodeURIComponent(url);
     return url;
 }
 
@@ -45,7 +45,7 @@ function createCoverImg(coverUrl, title) {
     img.alt = title;
     img.loading = 'lazy';
     img.onerror = function () {
-        this.src = '/assets/default-cover.svg';
+        this.src = appPath('/assets/default-cover.svg');
     };
     return img;
 }
@@ -55,7 +55,7 @@ function createAnimeCard(anime, showProgressBtn = false) {
     card.className = 'anime-card';
     card.onclick = (e) => {
         if (e.target.closest('.progress-btn') || e.target.closest('.status-switch')) return;
-        window.location.href = `/detail?id=${anime.id}`;
+        window.location.href = appPath(`/detail?id=${anime.id}`);
     };
 
     const coverWrap = document.createElement('div');
@@ -271,15 +271,59 @@ function showToast(message, type = 'success') {
 // ─── Navbar ──────────────────────────────────────────────────
 
 function initNavbar() {
-    const currentPath = window.location.pathname;
+    const currentPath = window.location.pathname.replace(/\/$/, '') || '/';
     document.querySelectorAll('.navbar nav a').forEach((a) => {
-        const href = a.getAttribute('href');
+        const href = new URL(a.href, window.location.href).pathname.replace(/\/$/, '') || '/';
         if (href === currentPath) {
             a.classList.add('active');
         } else {
             a.classList.remove('active');
         }
     });
+}
+
+function applyTheme(theme) {
+    const value = theme === 'dark' ? 'dark' : 'light';
+    document.documentElement.dataset.theme = value;
+    const button = document.getElementById('theme-toggle');
+    if (button) {
+        button.textContent = value === 'dark' ? '☀' : '☾';
+        button.title = value === 'dark' ? '切换到浅色主题' : '切换到深色主题';
+        button.setAttribute('aria-label', button.title);
+    }
+}
+
+function initSiteControls() {
+    const navbar = document.querySelector('.navbar');
+    const nav = navbar && navbar.querySelector('nav');
+    if (!navbar || !nav || document.querySelector('.site-controls')) return;
+
+    const controls = document.createElement('div');
+    controls.className = 'site-controls';
+
+    const home = document.createElement('a');
+    home.className = 'icon-button';
+    home.href = 'http://127.0.0.1/';
+    home.textContent = '⌂';
+    home.title = '返回主站';
+    home.setAttribute('aria-label', home.title);
+
+    const theme = document.createElement('button');
+    theme.id = 'theme-toggle';
+    theme.className = 'icon-button';
+    theme.type = 'button';
+    theme.addEventListener('click', () => {
+        const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        localStorage.setItem('theme', next);
+        applyTheme(next);
+    });
+
+    controls.append(home, theme);
+    navbar.appendChild(controls);
+
+    const saved = localStorage.getItem('theme');
+    const preferred = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    applyTheme(saved || preferred);
 }
 
 // ─── Pagination ──────────────────────────────────────────────
@@ -342,4 +386,7 @@ function createPagination(total, page, pageSize, onChange) {
     return container;
 }
 
-document.addEventListener('DOMContentLoaded', initNavbar);
+document.addEventListener('DOMContentLoaded', () => {
+    initNavbar();
+    initSiteControls();
+});

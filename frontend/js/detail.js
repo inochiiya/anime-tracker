@@ -47,7 +47,7 @@ function renderDetail(anime, characters, episodeNotes) {
             <div class="detail-cover">
                 <img src="${getProxiedUrl(anime.cover_url)}"
                      alt="${escapeHtml(anime.title)}"
-                     onerror="this.src='/assets/default-cover.svg'">
+                     onerror="this.src='${appPath('/assets/default-cover.svg')}'">
                 ${anime.is_favorite ? '<div class="favorite-badge">&#10084; 最爱</div>' : ''}
             </div>
             <div class="detail-info">
@@ -170,8 +170,8 @@ function renderEpisodeNotes(episodeNotes) {
                     ${n.images && n.images.length > 0 ? `
                         <div class="episode-images">
                             ${n.images.map(img => `
-                                <div class="episode-img" onclick="openLightbox('/api/uploads/${escapeHtml(img.filename)}')">
-                                    <img src="/api/uploads/${escapeHtml(img.filename)}" alt="${escapeHtml(img.original_name || '')}" loading="lazy">
+                                <div class="episode-img" onclick="openLightbox('${API_BASE}/uploads/${encodeURIComponent(img.filename)}')">
+                                    <img src="${API_BASE}/uploads/${encodeURIComponent(img.filename)}" alt="${escapeHtml(img.original_name || '')}" loading="lazy">
                                 </div>
                             `).join('')}
                         </div>

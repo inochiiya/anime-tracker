@@ -105,7 +105,7 @@ async function loadAdminList() {
             <tr>
                 <td>
                     <img class="cover-thumb" src="${getProxiedUrl(a.cover_url)}"
-                         alt="${a.title}" onerror="this.src='/assets/default-cover.svg'">
+                         alt="${a.title}" onerror="this.src='${appPath('/assets/default-cover.svg')}'">
                 </td>
                 <td>
                     <strong>${a.title}</strong>
@@ -476,7 +476,7 @@ function renderEpisodeImages() {
     }
     preview.innerHTML = currentEpisodeImages.map(img => `
         <div class="ep-img-thumb">
-            <img src="/api/uploads/${img.filename}" alt="${img.original_name || ''}">
+            <img src="${API_BASE}/uploads/${encodeURIComponent(img.filename)}" alt="${img.original_name || ''}">
             <button type="button" class="ep-img-del" onclick="deleteEpisodeImage(${img.id})">&times;</button>
         </div>
     `).join('');
@@ -493,7 +493,7 @@ async function uploadEpisodeImages(input) {
         try {
             const formData = new FormData();
             formData.append('file', file);
-            const res = await fetch(`/api/episodes/${noteId}/images`, {
+            const res = await fetch(`${API_BASE}/episodes/${noteId}/images`, {
                 method: 'POST',
                 body: formData,
                 headers: getAdminToken() ? { 'X-Admin-Token': getAdminToken() } : {},
@@ -628,7 +628,7 @@ async function handleChangelogSubmit(e) {
 
 async function exportData() {
     try {
-        const res = await fetch('/api/export', {
+        const res = await fetch(`${API_BASE}/export`, {
             headers: getAdminToken() ? { 'X-Admin-Token': getAdminToken() } : {},
         });
         if (!res.ok) {
@@ -655,7 +655,7 @@ async function importData(event) {
     try {
         const formData = new FormData();
         formData.append('file', file);
-        const res = await fetch('/api/import', {
+        const res = await fetch(`${API_BASE}/import`, {
             method: 'POST',
             body: formData,
             headers: getAdminToken() ? { 'X-Admin-Token': getAdminToken() } : {},
