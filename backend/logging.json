@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "disable_existing_loggers": false,
+  "formatters": {
+    "default": {
+      "()": "uvicorn.logging.DefaultFormatter",
+      "fmt": "%(asctime)s | %(levelprefix)s | %(message)s",
+      "datefmt": "%Y-%m-%d %H:%M:%S",
+      "use_colors": false
+    },
+    "access": {
+      "()": "uvicorn.logging.AccessFormatter",
+      "fmt": "%(asctime)s | %(levelprefix)s | %(client_addr)s | %(request_line)s | %(status_code)s",
+      "datefmt": "%Y-%m-%d %H:%M:%S",
+      "use_colors": false
+    }
+  },
+  "filters": {
+    "compact_access": {
+      "()": "logging_filters.AccessLogFilter"
+    }
+  },
+  "handlers": {
+    "console": {
+      "class": "logging.StreamHandler",
+      "formatter": "default",
+      "stream": "ext://sys.stderr"
+    },
+    "access_console": {
+      "class": "logging.StreamHandler",
+      "formatter": "access",
+      "filters": ["compact_access"],
+      "stream": "ext://sys.stdout"
+    },
+    "app_file": {
+      "()": "logging_filters.SafeRotatingFileHandler",
+      "formatter": "default",
+      "filename": "../logs/anime-app.log",
+      "maxBytes": 5242880,
+      "backupCount": 4,
+      "encoding": "utf-8",
+      "delay": true
+    },
+    "access_file": {
+      "()": "logging_filters.SafeRotatingFileHandler",
+      "formatter": "access",
+      "filters": ["compact_access"],
+      "filename": "../logs/anime-access.log",
+      "maxBytes": 5242880,
+      "backupCount": 4,
+      "encoding": "utf-8",
+      "delay": true
+    }
+  },
+  "loggers": {
+    "uvicorn": {
+      "handlers": ["console", "app_file"],
+      "level": "INFO",
+      "propagate": false
+    },
+    "uvicorn.error": {
+      "level": "INFO"
+    },
+    "uvicorn.access": {
+      "handlers": ["access_console", "access_file"],
+      "level": "INFO",
+      "propagate": false
+    }
+  },
+  "root": {
+    "handlers": ["console", "app_file"],
+    "level": "INFO"
+  }
+}

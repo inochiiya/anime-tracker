@@ -1,6 +1,7 @@
 import asyncio
 import ipaddress
 import json
+import logging
 import os
 import shutil
 import socket
@@ -29,6 +30,8 @@ from schemas import (
 )
 from config import ADMIN_TOKEN
 import crud
+
+logger = logging.getLogger("anime")
 
 BACKEND_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = BACKEND_DIR.parent
@@ -740,10 +743,10 @@ def migrate_from_old_db(db: Session):
         except Exception:
             pass
         old_conn.close()
-        print(f"[MIGRATE] Imported {len(rows)} anime records from anime_old.db")
+        logger.info("Imported %s anime records from anime_old.db", len(rows))
         return True
     except Exception as e:
-        print(f"[MIGRATE] Failed to import from anime_old.db: {e}")
+        logger.exception("Failed to import from anime_old.db: %s", e)
         return False
 
 
@@ -775,7 +778,7 @@ def startup():
     migrate_changelogs(db)
     if db.query(Anime).count() == 0:
         if not migrate_from_old_db(db):
-            print("[SEED] No old database found, starting with empty database")
+            logger.info("No old database found; starting with an empty database")
     db.close()
 
 @app.on_event("shutdown")

@@ -6,6 +6,7 @@ __pycache__/
 .venv/
 venv/
 .env
+logs/
 
 # === 数据文件（数据库、备份、缓存、上传内容）===
 backend/*.db

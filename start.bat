@@ -10,6 +10,7 @@ set "PYTHONDONTWRITEBYTECODE=1"
 set "ANIME_PORT=18101"
 set "ANIME_BROWSER_URL=http://127.0.0.1/apps/anime/"
 set "ANIME_DIRECT_URL=http://127.0.0.1:18101/"
+if not exist "logs" mkdir "logs"
 if /I "%~1"=="--no-browser" (
     set "ANIME_OPEN_BROWSER=0"
 ) else if not defined ANIME_OPEN_BROWSER (
@@ -56,7 +57,7 @@ echo Press Ctrl+C to stop.
 echo.
 
 pushd backend
-"%PYTHON_EXE%" %PYTHON_ARGS% -m uvicorn main:app --host 127.0.0.1 --port %ANIME_PORT%
+"%PYTHON_EXE%" %PYTHON_ARGS% -m uvicorn main:app --host 127.0.0.1 --port %ANIME_PORT% --log-config logging.json
 set "EXIT_CODE=%errorlevel%"
 popd
 if not "%EXIT_CODE%"=="0" echo Service exited with code %EXIT_CODE%.
@@ -83,5 +84,5 @@ set "EXIT_CODE=1"
 
 :finish
 echo.
-pause
+if not "%PROJECT_NO_PAUSE%"=="1" pause
 endlocal & exit /b %EXIT_CODE%
